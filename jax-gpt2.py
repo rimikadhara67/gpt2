@@ -52,7 +52,7 @@ class MLP(nnx.Module):
     def __init__(self, config, *, rngs:nnx.Rngs):
         super().__init__()
         self.c_fc = nnx.Linear(config.n_embd, config.n_embd * 4, rngs=rngs)
-        self.gelu = nnx.gelu(approximate=True)
+        self.gelu = nnx.gelu(x, approximate=True)
         self.c_proj = nnx.Linear(4 * config.n_embd, config.n_embd, rngs=rngs)
     
     def __call__(x):
@@ -62,9 +62,9 @@ class Block(nnx.Module):
     # the only difference in this block is using nnx modules instead of nn modules --> this was very smooth
     def __init__(self, config, *, rngs:nnx.Rngs):
         super().__init__()
-        self.ln_1 = nnx.LayerNorm(config.n_embd)
+        self.ln_1 = nnx.LayerNorm(config.n_embd, rngs=rngs)
         self.attn = CausalSelfAttention(config, rngs=rngs)
-        self.ln_2 = nnx.LayerNorm(config.n_embd)
+        self.ln_2 = nnx.LayerNorm(config.n_embd, rngs=rngs)
         self.mlp = MLP(config, rngs=rngs)
 
     def __call__(self, x):
@@ -78,7 +78,7 @@ class Transformer(nnx.Module):
         self.wte = nnx.Embed(config.vocab_size, config.n_embd, rngs=rngs)   # flax requires a separate way to handle random initialized weights
         self.wpe = nnx.Embed(config.block_size, config.n_embd, rngs=rngs)
         self.h = [Block(config, rngs=rngs) for _ in range(config.n_layer)]     # note that we don't have nn.ModuleList equivalent; using Python lists instead
-        self.ln_f = nnx.LayerNorm(config.n_embd)
+        self.ln_f = nnx.LayerNorm(config.n_embd, rngs=rngs)
 
 @dataclass
 class GPTConfig:
@@ -93,5 +93,5 @@ class GPT(nnx.Module):
         super().__init__()
         self.config = config
         self.transformer = Transformer(config, rngs=rngs) # flax nnx does not have nnx.ModuleDict equivalent --> making it into a class in order oto adhere to HF GPT2 implementation
-        self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, use_bias=False)
+        self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, use_bias=False, rngs=rngs)
 
