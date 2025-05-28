@@ -21,12 +21,31 @@ class CausalSelfAttention(nnx.Module):
 
     def __call__(self, x):
         B, T, C = x.size()
+        assert C == self.n_embd
+
         W_qkv = self.attn(x)
-        Wq, Wk, Wv = jnp.split(W_qkv, 3, axis=-1) # NOTE: using jnp to manipulate matrices instead of torch.split
+        q, k, v = jnp.split(W_qkv, 3, axis=-1) # NOTE: using jnp to manipulate matrices instead of torch.split
         # jnp.split(ary, indices_or_sections, axis=0) v/s ary.split(tensor, split_size_or_sections, dim=0)
         
-        head_dim = self.n_embd //self.n_layer
-        k = Wk.
+        head_dim = self.n_embd // self.n_layer
+        # Goal: to split the attention heads worth of information
+        # using reshape to get the appropriate dimensions
+        # transpose input params different
+        q = q.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3)
+        k = k.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3)
+        v = v.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3) 
+        # --> qkv matrices: (B,T,C) -> (B,T, n_head, head_dim) -> (B, n_head, T, head_dim)
+
+        # Calculating attention scores
+        attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))
+        # TODO: apply mask
+        attn_scores = F.softmax(attn_scores, dim=-1)
+        y = attn_scores @ v
+        y = y.transpose(0, 2, 1, 3).contiguous
+        y = y.reshape(B, T, C)
+        y = self.c_proj(y)
+
+        return y
 
 class MLP(nnx.Module):
     # again, very literal translation from pyTorch to flax, just changed it to nnx
