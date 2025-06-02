@@ -85,6 +85,8 @@ class Transformer(nnx.Module):
         self.h = [Block(config, rngs=rngs) for _ in range(config.n_layer)]     # note that we don't have nn.ModuleList equivalent; using Python lists instead
         self.ln_f = nnx.LayerNorm(config.n_embd, rngs=rngs)
 
+    # TODO: write a __call__ function
+
 @dataclass
 class GPTConfig:
     block_size: int = 1024

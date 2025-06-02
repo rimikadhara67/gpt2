@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn # neural network specific functions
 from torch.nn import functional as F # other functions like conv or relu, etc.
+import math
 
 
 class CausalSelfAttention(nn.Module):
@@ -25,7 +26,7 @@ class CausalSelfAttention(nn.Module):
     # all the weights are learned together and then split -- they areall concatenated together
     W_qkv = self.c_attn(x) # this takes each token embedding vector and has it be represented as 3 vectors (q, k, v): we are passing it through a linear layer
     # W_qkv shape = B, T, (3 x n_embd) --> q, k, v all packed into the same tensor for each token embedding
-    Wq, Wk, Wv = W_qkv.split(self.n_embd, dims=2) # we want to split it and extract them individually, equally across the 3rd dimension (dims=2) -- we want to keep embeddings for each token together
+    Wq, Wk, Wv = W_qkv.split(self.n_embd, dim=2) # we want to split it and extract them individually, equally across the 3rd dimension (dims=2) -- we want to keep embeddings for each token together
     # split along the embedding dimension to get back to the shape (B, T, C)
     # Wq shape = B, T, n_embd(C)
     # Wk shape = B, T, n_embd(C)
@@ -128,6 +129,26 @@ class GPT(nn.Module):
 
     self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # this is the final projection layer : takes the transformer output and projects it onto vocab size
     #  maps from n_embd → vocab_size -- gets predictions for each token in the vocabulary
+
+  def __call__(self, idx):
+      B, T = idx.size()   # i think this is the first input size --> upto max sequence length
+      assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block}."
+
+      # token and positional embeddings --> initializing them and forwarding them to the layers
+      pos = torch.arange(0, T, dtype=torch.long, device=idx.device) # shape of positions is a 1-D tensor of size T: shape [T] --> just taking out the batch size i think
+      tok_emb = self.transformer.wte(idx) # shape : [B, T, C]
+      pos_emb = self.transformer.wpe(pos) # shape : [T, C]
+      x = tok_emb + pos_emb # shape: [B, T, C]. __. broadcasting hidden here because pos_emb.shape is differnet
+
+      # Now we have x in the proper form --> perfectly tokenized and positional embeddings initialized
+      # Send x through all the layers 
+      for block in self.transformer.h:
+        x = block(x)
+      x = self.transformer.ln_f(x) # final layer norm
+
+      logits = self.lm_head(x) # (B, T, vocab_size) --> calculating B, T+1
+      # these logits are a softmax away from the probabilities
+      return logits
 
   @classmethod
   def from_pretrained(cls, model_type, override_args=None):
