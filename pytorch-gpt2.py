@@ -210,3 +210,49 @@ class GPT(nn.Module):
                     sd[k].copy_(sd_hf[k])
 
         return model
+
+
+# -------INFERENCE CODE------- 
+# Generating outputs from our model 
+# we are using the pretrained weights we got from hf_model but putting it through our gpt2 model on eval mode
+
+# num_return_seq = 5
+# max_length = 30
+
+
+# model = GPT.from_pretrained("gpt2")
+# # model = GPT2LMHeadModel.from_pretrained("gpt2")
+# model.eval() # probably does nothing we don't know
+# model.to('cuda') # move all the tensors to the GPU
+
+# import tiktoken
+# enc = tiktoken.get_encoding('gpt2') # tokenizer for gpt2
+# tokens = enc.encode("Hello, I'm a language model,") # 8 tokens
+# x = torch.tensor(tokens, dtype=torch.long).unsqueeze(0).repeat(num_return_seq, 1).to('cuda') # [5, 8]
+
+# # tokenized and ready to generate
+# torch.manual_seed(420)
+# torch.cuda.manual_seed(420)
+# while x.size(1) < max_length:
+#   with torch.no_grad():
+#     logits = model(x) # goes through the entire network and gives us output logits
+#     # logits = logits.logits
+#     logits = logits[:, -1, :]
+#     probs = F.softmax(logits, dim=-1)
+#     topk_probs, topk_indices = torch.topk(probs, k=50, dim=-1) # getting the top 50 probbailities -- everything else is set to 0 -- keeps the model on track
+#     idx_next = torch.multinomial(topk_probs, 1)
+#     xcol = torch.gather(topk_indices, -1, idx_next)
+#     x = torch.cat((x, xcol), dim=-1)
+
+# for i in range(num_return_seq):
+#   tokens = x[i, :max_length].tolist()
+#   decoded = enc.decode(tokens)
+#   print(">>", decoded)
+
+
+## -------OUTPUT-------
+# >> Hello, I'm a language model, not a computer. You could call me a language model, with the same language as I'm writing. I
+# >> Hello, I'm a language model, not a programmer. I'm just doing what you call, writing things instead of just code. But it's
+# >> Hello, I'm a language model, that sorta, I'd like to know how it was constructed. So, I've built an
+# >> Hello, I'm a language model, a grammar. I'm very careful not to make mistakes or use an unfair definition of "language" to justify
+# >> Hello, I'm a language model, I'm an action model. Well, I think this is a good idea. In February, the
