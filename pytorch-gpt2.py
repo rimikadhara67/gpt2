@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn # neural network specific functions
 from torch.nn import functional as F # other functions like conv or relu, etc.
 import math
-
+from transformers.activations import NewGELUActivation
 
 class CausalSelfAttention(nn.Module):
   def __init__(self, config):
@@ -12,6 +12,8 @@ class CausalSelfAttention(nn.Module):
 
     self.c_attn = nn.Linear(config.n_embd, 3 * config.n_embd) # take the vector embd and expand it to 3 more vectors --> simple linear layer expanding 1 node to 3 nodes
     self.c_proj = nn.Linear(config.n_embd, config.n_embd) # do not compress -- this is just a projection layer so that the nodes can talk to each other.
+    self.attn_dropout = nn.Dropout(config.dropout)
+    self.resid_dropout = nn.Dropout(config.dropout)
     self.n_head, self.n_embd = config.n_head, config.n_embd
 
     # need to add a causal mask to the attn block -- so we are only looking at the present and the past tokens
@@ -52,13 +54,13 @@ class CausalSelfAttention(nn.Module):
     # we want to make our token context aware: context is now stored in the attn_scores that tell us how much to attend to other tokens
 
     # NEXT --> gather all and exchange information
-    y = attn_scores @ v # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : why do we do this?
+    y = self.attn_dropout(attn_scores @ v) # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : why do we do this?
     # now we want to regather all the heads
     # .contiguous helps us concatenate all attention heads together
     y = y.transpose(1, 2) # (B, n_head, T, head_dim) --> (B, T, n_head, head_dim) : so we can combine
     y = y.contiguous() # force the tensor to have a standard memory layout.
     y = y.view(B, T, C) # Then flatten last two dims (B, T, n_head, head_dim) → (B, T, C)
-    y = self.c_proj(y) # (B, T, C) -> (B, T, C): Mixes the information across heads
+    y = self.resid_dropout(self.c_proj(y)) # (B, T, C) -> (B, T, C): Mixes the information across heads
     # contrary to mlp, this layer is not for compressing information, it is for exchanging it across all heads
 
     return y
@@ -67,16 +69,18 @@ class MLP(nn.Module):
   def __init__(self, config):
     super().__init__()
     self.c_fc   = nn.Linear(config.n_embd, 4 * config.n_embd) # name means fully connected layer -- expands the network to make more sense
-    self.gelu   = nn.GELU() # why not relu? the dead relu neuron problem: any activations close to 0 would be smoothed out
+    self.gelu   = NewGELUActivation() # why not relu? the dead relu neuron problem: any activations close to 0 would be smoothed out
     # relu harshly zeros out all the negatives and is linear and rigid
     # gelu = smoother gradient flow
     self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd) # compress it back to its original dimension
+    self.dropout = nn.Dropout(config.dropout)
 
   def forward(self, x):
-    # return self.c_proj(self.gelu(self.c_fc(x))) --> less clean version
+    # return self.dropout(self.c_proj(self.gelu(self.c_fc(x)))) --> less clean version
     x = self.c_fc(x)
     x = self.gelu(x)
     x = self.c_proj(x)
+    x = self.dropout(x)
     return x
 
 
@@ -95,11 +99,9 @@ class Block(nn.Module):
   # the big change here from the transformer arch is that the norm layer is added to the inputs of attn/mlp layers
   # and the norm layers are removed from blocking the residual pathway -- this needs to be clean in order to form the greater context in the model : we loss context otherwise
   def forward(self, x):
-    x = self.ln_1(x)
-    x = x + self.attn(x) # residual connection -- the graidents that flow from the top are uninteruppted
+    x = x + self.attn(self.ln_1(x)) # residual connection -- the graidents that flow from the top are uninteruppted
     # also attn is a pooling function (reduce operation) -- the information is gathered and then reduced: communicated through the network
-    x = self.ln_2(x)
-    x = x + self.mlp(x) # the nodes individually think here and and then it i smapped to the output nodes -- it is like a map function
+    x = x + self.mlp(self.ln_2(x)) # the nodes individually think here and and then it i smapped to the output nodes -- it is like a map function
     return x
 
 @dataclass
@@ -109,6 +111,8 @@ class GPTConfig:
   n_layer: int = 12 # number of transformer layer
   n_head: int = 12 # number of attention heads
   n_embd: int = 768 # the embedding dimensions -- a token is represented in 384 digit vector in this case
+  bias = True
+  dropout: float = 0.1 # dropout probability -- this helps the model not overfit too much onto our batch by dropping some weights in the middle and making them equal 0.1? -- only for training
 
 class GPT(nn.Module):
   def __init__(self, config):
