@@ -326,7 +326,7 @@ torch.set_float32_matmul_precision('high')
 # also tried 'medium' which is for bf16 -- but we don't use medium we use torch.autocast!!
 # we now expect all the matmuls (in Linear layers especially) to run tf32 -- expecting around 8x speedup
 
-model = GPT(GPTConfig())
+model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
 model = torch.compile(model) # optim #3 -- torch.compile
 
