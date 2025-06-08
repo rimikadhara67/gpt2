@@ -3,9 +3,29 @@ Trying to keep track of all the runtimes with different configurations and optim
 This log/notes section is in the opposite chronological order for my convenience. So, the most recent logs appear frist. 
 All of these were run on 1 A100 available in Colab Notebook
 
+# ----- OPTIMIZATION #6 ----- 
+
+B = 8 ; T = 1024 ; dtype = bfloat16
+-----------------------------
+
+-----------------------------
+
+
+--------------------------------------------------------------------------------
+
+# ----- OPTIMIZATION #5 ----- 
+Look for ugly numbers
+B = 8 ; T = 1024 ; dtype = bfloat16
+-----------------------------
+
+-----------------------------
+
+
+--------------------------------------------------------------------------------
+
 # ----- OPTIMIZATION #4 ----- 
 Flash-Attention
-B = 8 ; T = 1024 ; dtype = tensorfloat32
+B = 8 ; T = 1024 ; dtype = bfloat16
 -----------------------------
 --> Kernel-Fusion algo that torch.compile cannot find -- the reason it cannot find is because it requires algorithmic rewrite of attention itself
     Flash Attention does more FLOPs but is faster because it's mindful of its memory hierarchy -- fewer reads and writes: don't materialize the matrix into HBM
@@ -70,7 +90,7 @@ step 50: loss = 5.846281051635742 | time = 56.1978816986084 | throughput = 145.7
 
 # ----- OPTIMIZATION #3 ----- 
 Using torch.compile : gcc of neural networks
-B = 8 ; T = 1024 ; dtype = tensorfloat32
+B = 8 ; T = 1024 ; dtype = bfloat16
 -----------------------------
 --> makes compilation a bit slow but the computations are a lot faster
     it aims to reduce pytorch overhead and reduce gpu reads and writes
@@ -139,7 +159,7 @@ step 50: loss = 5.846532821655273 | time = 78.45473289489746 | throughput = 104.
 
 # ----- OPTIMIZATION #2 ----- 
 Precision change to BF16 to save memory -- using torch.autocast
-B = 8 ; T = 1024 ; dtype = tensorfloat32
+B = 8 ; T = 1024 ; dtype = bfloat16
 --> not a lot faster but oh well
 -----------------------------
 cuda
