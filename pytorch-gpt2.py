@@ -5,6 +5,64 @@ from torch.nn import functional as F # other functions like conv or relu, etc.
 import math
 from transformers.activations import NewGELUActivation
 
+# ---- DATA LOADER FOR TRAINING ---- #
+
+import tiktoken
+class DataLoaderLite:
+  def __init__(self, B, T):
+    self.B = B
+    self.T = T
+    self.enc = tiktoken.get_encoding("gpt2")
+
+    # this is the tiny-shakespeare dataset that can be extracted as a raw "input.txt" file with this command
+    # !wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+    with open('input.txt', 'r') as f: 
+      text = f.read()
+    tokens = self.enc.encode(text)
+    self.tokens = torch.tensor(tokens)
+    print(f"loaded {len(self.tokens)} tokens")
+    print(f"1 Epoch = {len(self.tokens) // (self.B * self.T)} batches")
+
+    self.current_position = 0
+
+# ---- DATA LOADER FOR TRAINING ---- #
+
+import tiktoken
+class DataLoaderLite:
+  def __init__(self, B, T):
+    self.B = B
+    self.T = T
+    self.enc = tiktoken.get_encoding("gpt2")
+
+    with open('input.txt', 'r') as f:
+      text = f.read()
+    tokens = self.enc.encode(text)
+    self.tokens = torch.tensor(tokens)
+    print(f"loaded {len(self.tokens)} tokens")
+    print(f"1 Epoch = {len(self.tokens) // (self.B * self.T)} batches")
+
+    self.current_position = 0
+
+  def next_batch(self):
+    B, T = self.B, self.T
+    buf = self.tokens[self.current_position : self.current_position + B*T + 1]
+    x = buf[:-1].view(B, T)
+    y = buf[1:].view(B, T)
+
+    self.current_position = B*T + 1
+    # check out of bounds -- reset
+    if self.current_position >= len(self.tokens):
+      self.current_position = 0
+    return x, y
+
+    self.current_position = B*T + 1
+    # check out of bounds -- reset
+    if self.current_position >= len(self.tokens):
+      self.current_position = 0
+    return x, y
+
+# ----- GPT-2 IMPLEMENTATION ----- #
+
 class CausalSelfAttention(nn.Module):
   def __init__(self, config):
     super().__init__()
@@ -15,6 +73,11 @@ class CausalSelfAttention(nn.Module):
     self.attn_dropout = nn.Dropout(config.dropout)
     self.resid_dropout = nn.Dropout(config.dropout)
     self.n_head, self.n_embd = config.n_head, config.n_embd
+
+    # NOTE : Just simply adding to the residual stream makes the activations grow to a much larger degree than needed for Linear layers-- our standard deviations across the activations grow much mroe than needed
+    # to solve this, we multiple by 1/srt(N) to compensate and have all the activations near 1 std away from each other
+    # Come back to this because I am not sure what it is doing ???
+    self.c_proj.SCALE_INIT = 1 
 
     # need to add a causal mask to the attn block -- so we are only looking at the present and the past tokens
     mask = torch.tril(torch.ones(config.block_size, config.block_size))  # Lower-triangular matrix --> taking a matrix of 1s and then upper triangle is set to 0
@@ -54,7 +117,7 @@ class CausalSelfAttention(nn.Module):
     # we want to make our token context aware: context is now stored in the attn_scores that tell us how much to attend to other tokens
 
     # NEXT --> gather all and exchange information
-    y = self.attn_dropout(attn_scores @ v) # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : why do we do this?
+    y = self.attn_dropout(attn_scores @ v) # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : ?? why do we do this?
     # now we want to regather all the heads
     # .contiguous helps us concatenate all attention heads together
     y = y.transpose(1, 2) # (B, n_head, T, head_dim) --> (B, T, n_head, head_dim) : so we can combine
@@ -69,11 +132,13 @@ class MLP(nn.Module):
   def __init__(self, config):
     super().__init__()
     self.c_fc   = nn.Linear(config.n_embd, 4 * config.n_embd) # name means fully connected layer -- expands the network to make more sense
-    self.gelu   = NewGELUActivation() # why not relu? the dead relu neuron problem: any activations close to 0 would be smoothed out
+    self.gelu   = NewGELUActivation() # ?? why not relu? the dead relu neuron problem: any activations close to 0 would be smoothed out
     # relu harshly zeros out all the negatives and is linear and rigid
     # gelu = smoother gradient flow
     self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd) # compress it back to its original dimension
     self.dropout = nn.Dropout(config.dropout)
+
+    self.c_proj.SCALE_INIT = 1 
 
   def forward(self, x):
     # return self.dropout(self.c_proj(self.gelu(self.c_fc(x)))) --> less clean version
@@ -106,8 +171,8 @@ class Block(nn.Module):
 
 @dataclass
 class GPTConfig:
-  block_size: int = 1024 # max context length -- for a small model -- maybe the wpe part?
-  vocab_size: int = 50257 # character level gpt -- number of unique characters -- maybe the wte part?
+  block_size: int = 1024 # max context length -- for a small model -- maybe the wpe part
+  vocab_size: int = 50257 # character level gpt -- number of unique characters -- maybe the wte part
   n_layer: int = 12 # number of transformer layer
   n_head: int = 12 # number of attention heads
   n_embd: int = 768 # the embedding dimensions -- a token is represented in 384 digit vector in this case
@@ -134,7 +199,29 @@ class GPT(nn.Module):
     self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False) # this is the final projection layer : takes the transformer output and projects it onto vocab size
     #  maps from n_embd → vocab_size -- gets predictions for each token in the vocabulary
 
-  def __call__(self, idx):
+    # weight sharing scheme
+    self.transformer.wte.weight = self.lm_head.weight # weight sharing scheme -- why do we need this?
+
+    # initialize params 
+    self.apply(self._init_weights) # --> iterates through the sub-modules of the current module 
+
+  def _init_weights(self, module):
+    # ?? idk why we need this ?? -- to match the hf implementation
+    # ?? which layers need initialization -- linear, embedding layers, and layernorms (but their default params are fine)
+    if isinstance(module, nn.Linear): # if we are in a linear layer
+      std = 0.02 # default
+      if hasattr(module, "SCALE_INIT"):
+        # NOTE : all the activations without this are very large standard deviations apart and we want to normalize that to around 1
+        # we do so by 1/sqrt(number of residual layers) = 2 * num_layers because each layer has 2 residual streams (mlp and attn)
+        std *= (2 * self.config.n_layer) ** -0.5
+      torch.nn.init.normal_(module.weight, mean=0.0, std=std) # initialize the weights with a normal distribution and std of 0.02
+      if module.bias is not None:
+        torch.nn.init.zeros_(module.bias) # initialize the bias with zeros
+        # default is normal and not zeros^
+    elif isinstance(module, nn.Embedding): # --> for embeddings like wte and wpe
+      torch.nn.init.normal_(module.weight, mean=0.0, std=0.02) # initialize the weights with a normal distribution and std of 0.02
+  
+  def forward(self, idx, targets=None):
       B, T = idx.size()   # i think this is the first input size --> upto max sequence length
       assert T <= self.config.block_size, f"Cannot forward sequence of length {T}, block size is only {self.config.block}."
 
@@ -152,7 +239,14 @@ class GPT(nn.Module):
 
       logits = self.lm_head(x) # (B, T, vocab_size) --> calculating B, T+1
       # these logits are a softmax away from the probabilities
-      return logits
+
+      # For training
+      loss = None # by default -- during inference
+      if targets is not None:
+        # first flatten out to (B, T) and the targets to 1D
+        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1)) # using cross-entropy loss function for training
+
+      return logits, loss
 
   @classmethod
   def from_pretrained(cls, model_type, override_args=None):
@@ -198,61 +292,28 @@ class GPT(nn.Module):
         # this means that we have to transpose these weights when we import them
         assert len(sd_keys_hf) == len(sd_keys), f"mismatched keys: {len(sd_keys_hf)} != {len(sd_keys)}"
         for k in sd_keys_hf:
-            if any(k.endswith(w) for w in transposed):
-                # special treatment for the Conv1D weights we need to transpose
-                assert sd_hf[k].shape[::-1] == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k].t())
-            else:
-                # vanilla copy over the other parameters
-                assert sd_hf[k].shape == sd[k].shape
-                with torch.no_grad():
-                    sd[k].copy_(sd_hf[k])
+          if k not in sd:
+              continue  # just in case; should already be filtered
+
+          if any(k.endswith(w) for w in transposed):
+              # ensure the transposed shape matches
+              assert sd_hf[k].shape[::-1] == sd[k].shape, f"Mismatch in transposed weight: {k}"
+              with torch.no_grad():
+                  sd[k].copy_(sd_hf[k].t())
+
+                  # if "attn.c_proj" in k:
+                  #   my_sd_2 = model.state_dict()[k]
+                  #   their_sd_2 = model_hf.state_dict()[k].t()
+                  #   diff = (my_sd_2 - their_sd_2).abs().max()
+                  #   print(torch.allclose(my_sd_2, their_sd_2))
+                  #   print(diff)
+
+                  #   print(torch.allclose(my_sd_2, their_sd_2))
+                  #   print(f"{k} | max abs diff: {diff.item()}")
+          else:
+              assert sd_hf[k].shape == sd[k].shape, f"Mismatch in shape: {k}"
+              with torch.no_grad():
+                  sd[k].copy_(sd_hf[k])
+
 
         return model
-
-
-# -------INFERENCE CODE------- 
-# Generating outputs from our model 
-# we are using the pretrained weights we got from hf_model but putting it through our gpt2 model on eval mode
-
-# num_return_seq = 5
-# max_length = 30
-
-
-# model = GPT.from_pretrained("gpt2")
-# # model = GPT2LMHeadModel.from_pretrained("gpt2")
-# model.eval() # probably does nothing we don't know
-# model.to('cuda') # move all the tensors to the GPU
-
-# import tiktoken
-# enc = tiktoken.get_encoding('gpt2') # tokenizer for gpt2
-# tokens = enc.encode("Hello, I'm a language model,") # 8 tokens
-# x = torch.tensor(tokens, dtype=torch.long).unsqueeze(0).repeat(num_return_seq, 1).to('cuda') # [5, 8]
-
-# # tokenized and ready to generate
-# torch.manual_seed(420)
-# torch.cuda.manual_seed(420)
-# while x.size(1) < max_length:
-#   with torch.no_grad():
-#     logits = model(x) # goes through the entire network and gives us output logits
-#     # logits = logits.logits
-#     logits = logits[:, -1, :]
-#     probs = F.softmax(logits, dim=-1)
-#     topk_probs, topk_indices = torch.topk(probs, k=50, dim=-1) # getting the top 50 probbailities -- everything else is set to 0 -- keeps the model on track
-#     idx_next = torch.multinomial(topk_probs, 1)
-#     xcol = torch.gather(topk_indices, -1, idx_next)
-#     x = torch.cat((x, xcol), dim=-1)
-
-# for i in range(num_return_seq):
-#   tokens = x[i, :max_length].tolist()
-#   decoded = enc.decode(tokens)
-#   print(">>", decoded)
-
-
-## -------OUTPUT-------
-# >> Hello, I'm a language model, not a computer. You could call me a language model, with the same language as I'm writing. I
-# >> Hello, I'm a language model, not a programmer. I'm just doing what you call, writing things instead of just code. But it's
-# >> Hello, I'm a language model, that sorta, I'd like to know how it was constructed. So, I've built an
-# >> Hello, I'm a language model, a grammar. I'm very careful not to make mistakes or use an unfair definition of "language" to justify
-# >> Hello, I'm a language model, I'm an action model. Well, I think this is a good idea. In February, the
