@@ -332,7 +332,7 @@ model = torch.compile(model) # optim #3 -- torch.compile
 
 losses = []
 all_tokens_per_sec = []
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-8)
 for i in range(50):
   # let's time
   t0 = time.time()
@@ -343,6 +343,7 @@ for i in range(50):
   with torch.autocast(device_type=device, dtype=torch.float16):
     logits, loss = model(x, y) 
   loss.backward() # backprop
+  norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) #optim #6
   optimizer.step() # update the params based on the backprop
   torch.cuda.synchronize() # needs to make sure all the threads have completed on the gpu -- makes the cpu wait
   t1 = time.time()
@@ -350,4 +351,4 @@ for i in range(50):
   losses.append(loss.item())
   tokens_per_sec = (train_loader.B * train_loader.T) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
   all_tokens_per_sec.append(tokens_per_sec)
-  print(f"step {i+1}: loss = {loss.item()} | time = {t} | throughput = {tokens_per_sec}")
+  print(f"step {i+1}: loss = {loss.item():.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
