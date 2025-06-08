@@ -330,10 +330,29 @@ model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
 model = torch.compile(model) # optim #3 -- torch.compile
 
+max_lr = 6e-4
+min_lr = max_lr * 0.1
+warmup_steps = 10
+max_steps = 50
+# defining our learning rate scheduler -- adjusts the lr between epochs or iterations
+# used to imporve training efficiency, convergence, and overall model performance instead of using a fixed lr
+def get_lr(step):
+  # linear warmup for wardmup_iters
+  if step < warmup_steps:
+    return max_lr * (step+1) / warmup_steps
+  # return min_learning rate
+  if step > max_steps:
+    return min_lr # would we ever even reach this ??
+  decay_ratio = (step - warmup_steps) / (max_steps - warmup_steps)
+  assert 0 <= decay_ratio <= 1
+  coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+  return min_lr + coeff * (max_lr - min_lr)
+
+
 losses = []
 all_tokens_per_sec = []
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, betas=(0.9, 0.95), eps=1e-8)
-for i in range(50):
+optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95), eps=1e-8)
+for step in range(max_steps):
   # let's time
   t0 = time.time()
   x, y = train_loader.next_batch()
@@ -344,6 +363,10 @@ for i in range(50):
     logits, loss = model(x, y) 
   loss.backward() # backprop
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) #optim #6
+  # optim 7 
+  lr = get_lr(step)
+  for param_group in optimizer.param_groups:
+    param_group['lr'] = lr # this is what sets the lr
   optimizer.step() # update the params based on the backprop
   torch.cuda.synchronize() # needs to make sure all the threads have completed on the gpu -- makes the cpu wait
   t1 = time.time()
@@ -351,4 +374,4 @@ for i in range(50):
   losses.append(loss.item())
   tokens_per_sec = (train_loader.B * train_loader.T) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
   all_tokens_per_sec.append(tokens_per_sec)
-  print(f"step {i+1}: loss = {loss.item():.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
+  print(f"step {i+1}: loss = {loss.item():.6f} | lr = {lr:.4f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
