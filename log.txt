@@ -2,11 +2,72 @@ Trying to keep track of all the runtimes with different configurations and optim
 
 This log/notes section is in the opposite chronological order for my convenience. So, the most recent logs appear frist. 
 
-# ----- OPTIMization #1 ----- 
+# ----- OPTIMIZATION #1 ----- 
 Precision change to TF32 to save memory 
 B = 4 ; T = 1024 ; dtype = tensorfloat32
 -----------------------------
 
+--------------------------------------------------------------
+
+# ----- BASELINE CHANGE ----- #
+changing the baseline metric from time to throughput
+B = 4 ; T = 1024 ; dtype = float32
+-------------------------------
+cuda
+loaded 338025 tokens
+1 Epoch = 82 batches
+step 1: loss = 11.001951217651367 | throughput = 1393.2366371154785
+step 2: loss = 9.562024116516113 | throughput = 1343.214988708496
+step 3: loss = 8.566054344177246 | throughput = 1361.6752624511719
+step 4: loss = 7.669937610626221 | throughput = 1349.62797164917
+step 5: loss = 6.9738688468933105 | throughput = 1346.1251258850098
+step 6: loss = 6.367519855499268 | throughput = 1368.3762550354004
+step 7: loss = 6.0060858726501465 | throughput = 1363.6012077331543
+step 8: loss = 5.821777820587158 | throughput = 1380.1538944244385
+step 9: loss = 5.729645252227783 | throughput = 1378.3318996429443
+step 10: loss = 5.67914342880249 | throughput = 1380.3250789642334
+step 11: loss = 5.658806800842285 | throughput = 1368.5905933380127
+step 12: loss = 5.659032821655273 | throughput = 1378.3206939697266
+step 13: loss = 5.669314384460449 | throughput = 1381.5584182739258
+step 14: loss = 5.6730451583862305 | throughput = 1390.3756141662598
+step 15: loss = 5.662708759307861 | throughput = 1417.31595993042
+step 16: loss = 5.63862419128418 | throughput = 1410.6831550598145
+step 17: loss = 5.6149749755859375 | throughput = 1427.8473854064941
+step 18: loss = 5.594481945037842 | throughput = 1424.8194694519043
+step 19: loss = 5.587922096252441 | throughput = 1434.295892715454
+step 20: loss = 5.58903169631958 | throughput = 1444.6756839752197
+step 21: loss = 5.591153144836426 | throughput = 1449.89013671875
+step 22: loss = 5.589903831481934 | throughput = 1460.0152969360352
+step 23: loss = 5.5819807052612305 | throughput = 1472.1343517303467
+step 24: loss = 5.570027828216553 | throughput = 1477.2758483886719
+step 25: loss = 5.555245876312256 | throughput = 1492.2871589660645
+step 26: loss = 5.539721488952637 | throughput = 1499.5427131652832
+step 27: loss = 5.519328594207764 | throughput = 1500.861406326294
+step 28: loss = 5.49158239364624 | throughput = 1508.2204341888428
+step 29: loss = 5.438874244689941 | throughput = 1522.4025249481201
+step 30: loss = 5.431771755218506 | throughput = 1531.430721282959
+step 31: loss = 5.404346466064453 | throughput = 1538.6955738067627
+step 32: loss = 5.378540992736816 | throughput = 1537.5490188598633
+step 33: loss = 5.354997634887695 | throughput = 1521.7516422271729
+step 34: loss = 5.353440761566162 | throughput = 1522.263765335083
+step 35: loss = 5.322598457336426 | throughput = 1526.8845558166504
+step 36: loss = 5.287380695343018 | throughput = 1516.5786743164062
+step 37: loss = 5.264023303985596 | throughput = 1502.6283264160156
+step 38: loss = 5.256718158721924 | throughput = 1490.5552864074707
+step 39: loss = 5.234388828277588 | throughput = 1482.1877479553223
+step 40: loss = 5.205431938171387 | throughput = 1473.4549522399902
+step 41: loss = 5.196131229400635 | throughput = 1473.5291004180908
+step 42: loss = 5.1900954246521 | throughput = 1463.174819946289
+step 43: loss = 5.173888683319092 | throughput = 1456.50315284729
+step 44: loss = 5.17252254486084 | throughput = 1452.965497970581
+step 45: loss = 5.165241241455078 | throughput = 1441.8773651123047
+step 46: loss = 5.1640400886535645 | throughput = 1434.2241287231445
+step 47: loss = 5.153657913208008 | throughput = 1446.7878341674805
+step 48: loss = 5.159252166748047 | throughput = 1429.452896118164
+step 49: loss = 5.144473075866699 | throughput = 1417.9353713989258
+step 50: loss = 5.146661758422852 | throughput = 1419.1439151763916
+
+--------------------------------------------------------------
 
 # ----- BASELINE ----- #
 B = 4 ; T = 1024 ; dtype = float32
