@@ -302,7 +302,6 @@ class GPT(nn.Module):
 
 
 # ----- MAIN ----- #
-# -------TRAINING CODE------- #
 
 import time
 

@@ -3,9 +3,17 @@ Trying to keep track of all the runtimes with different configurations and optim
 This log/notes section is in the opposite chronological order for my convenience. So, the most recent logs appear frist. 
 All of these were run on 1 A100 available in Colab Notebook
 
+# ----- OPTIMIZATION #4 ----- 
+Flash-Attention
+B = 8 ; T = 1024 ; dtype = tensorfloat32
+-----------------------------
+
+--------------------------------------------------------------------------------
+
 # ----- OPTIMIZATION #3 ----- 
 Using torch.compile : gcc of neural networks
 B = 8 ; T = 1024 ; dtype = tensorfloat32
+-----------------------------
 --> makes compilation a bit slow but the computations are a lot faster
     it aims to reduce pytorch overhead and reduce gpu reads and writes
 --> insane speedup and throughput
@@ -14,6 +22,7 @@ B = 8 ; T = 1024 ; dtype = tensorfloat32
     it optimizes that process to run in efficient code -- i think this is like jit
 --> now that it knows which computations are when -- it makes the element-wise computations while the data is written on the gpu 
     this is also called kernel fusion -- it fuses a bunch of operations together to happen during one roundtrip that the data is making
+    kind of checks like "oh i have this piece of data, are there any more computations that need to happen here?"
 -----------------------------
 cuda
 loaded 338025 tokens
