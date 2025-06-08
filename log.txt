@@ -7,7 +7,65 @@ All of these were run on 1 A100 available in Colab Notebook
 Flash-Attention
 B = 8 ; T = 1024 ; dtype = tensorfloat32
 -----------------------------
-
+--> Kernel-Fusion algo that torch.compile cannot find -- the reason it cannot find is because it requires algorithmic rewrite of attention itself
+    Flash Attention does more FLOPs but is faster because it's mindful of its memory hierarchy -- fewer reads and writes: don't materialize the matrix into HBM
+    The "att" matrix which is the core of attention, is not ever read/written onto HBM during Flash-Attention -- it's a large matrix that contracts kvq
+--> Online softmax trick which helps you get the softmax without ever knowing all the inputs
+--> F.scaled_dot_product_attention(q, k, v, is_causal=True)
+-----------------------------
+cuda
+loaded 338025 tokens
+1 Epoch = 41 batches
+step 1: loss = 10.937248229980469 | time = 68.30883026123047 | throughput = 119.92593005430913
+step 2: loss = 9.572845458984375 | time = 66.1923885345459 | throughput = 123.76045314824353
+step 3: loss = 8.843436241149902 | time = 62.46638298034668 | throughput = 131.14253794040528
+step 4: loss = 8.382768630981445 | time = 56.54478073120117 | throughput = 144.8763244647209
+step 5: loss = 7.959447860717773 | time = 56.46800994873047 | throughput = 145.0732903007887
+step 6: loss = 7.530279159545898 | time = 56.37979507446289 | throughput = 145.3002798108883
+step 7: loss = 7.1631975173950195 | time = 55.98855018615723 | throughput = 146.31563012012793
+step 8: loss = 6.8516645431518555 | time = 56.10203742980957 | throughput = 146.0196523209907
+step 9: loss = 6.587648391723633 | time = 55.99474906921387 | throughput = 146.29943228916073
+step 10: loss = 6.37211799621582 | time = 56.764841079711914 | throughput = 144.31468219027337
+step 11: loss = 6.199061393737793 | time = 56.34808540344238 | throughput = 145.3820469914234
+step 12: loss = 6.065949440002441 | time = 56.122779846191406 | throughput = 145.96568492242858
+step 13: loss = 5.974018096923828 | time = 56.0002326965332 | throughput = 146.2851064279085
+step 14: loss = 5.921084403991699 | time = 56.55980110168457 | throughput = 144.8378502122422
+step 15: loss = 5.8961076736450195 | time = 56.3960075378418 | throughput = 145.2585095585562
+step 16: loss = 5.886222839355469 | time = 56.199073791503906 | throughput = 145.7675268882893
+step 17: loss = 5.881736755371094 | time = 56.234121322631836 | throughput = 145.6766782751004
+step 18: loss = 5.87634801864624 | time = 56.46920204162598 | throughput = 145.0702277315927
+step 19: loss = 5.87099027633667 | time = 56.13303184509277 | throughput = 145.93902610867357
+step 20: loss = 5.865942478179932 | time = 56.14280700683594 | throughput = 145.91361630711737
+step 21: loss = 5.861298561096191 | time = 55.81402778625488 | throughput = 146.77313795327657
+step 22: loss = 5.858740329742432 | time = 56.099653244018555 | throughput = 146.02585802744593
+step 23: loss = 5.85703182220459 | time = 56.17046356201172 | throughput = 145.84177306915228
+step 24: loss = 5.856447696685791 | time = 55.788516998291016 | throughput = 146.8402538868518
+step 25: loss = 5.858950138092041 | time = 55.816650390625 | throughput = 146.76624166211045
+step 26: loss = 5.863671779632568 | time = 56.120872497558594 | throughput = 145.97064577633523
+step 27: loss = 5.866368770599365 | time = 55.9542179107666 | throughput = 146.4054061673108
+step 28: loss = 5.859160423278809 | time = 56.43868446350098 | throughput = 145.14867024049408
+step 29: loss = 5.850503921508789 | time = 56.68163299560547 | throughput = 144.52653473542526
+step 30: loss = 5.843613624572754 | time = 56.89382553100586 | throughput = 143.9875052089008
+step 31: loss = 5.841170310974121 | time = 56.391239166259766 | throughput = 145.27079243368482
+step 32: loss = 5.837658882141113 | time = 56.25128746032715 | throughput = 145.63222229851442
+step 33: loss = 5.836633205413818 | time = 56.40363693237305 | throughput = 145.2388612780779
+step 34: loss = 5.836865425109863 | time = 56.81729316711426 | throughput = 144.18145503526932
+step 35: loss = 5.838354110717773 | time = 56.047916412353516 | throughput = 146.16065189168035
+step 36: loss = 5.839386463165283 | time = 56.00619316101074 | throughput = 146.26953802142975
+step 37: loss = 5.842270851135254 | time = 55.94015121459961 | throughput = 146.44222123343135
+step 38: loss = 5.844479560852051 | time = 56.070804595947266 | throughput = 146.10098890202315
+step 39: loss = 5.846694469451904 | time = 55.79185485839844 | throughput = 146.83146887285903
+step 40: loss = 5.848828315734863 | time = 55.710792541503906 | throughput = 147.04511686666552
+step 41: loss = 5.848433017730713 | time = 55.75871467590332 | throughput = 146.918738131176
+step 42: loss = 5.847661018371582 | time = 56.69760704040527 | throughput = 144.485815674055
+step 43: loss = 5.847373962402344 | time = 56.287288665771484 | throughput = 145.53907630270325
+step 44: loss = 5.84539794921875 | time = 56.3197135925293 | throughput = 145.45528514702272
+step 45: loss = 5.844130039215088 | time = 56.19692802429199 | throughput = 145.77309272953286
+step 46: loss = 5.844479560852051 | time = 56.6709041595459 | throughput = 144.55389624518816
+step 47: loss = 5.844901084899902 | time = 56.39839172363281 | throughput = 145.25236889986135
+step 48: loss = 5.844442367553711 | time = 56.113481521606445 | throughput = 145.9898722706357
+step 49: loss = 5.845497131347656 | time = 56.15687370300293 | throughput = 145.8770665070328
+step 50: loss = 5.846281051635742 | time = 56.1978816986084 | throughput = 145.77061896984017
 --------------------------------------------------------------------------------
 
 # ----- OPTIMIZATION #3 ----- 

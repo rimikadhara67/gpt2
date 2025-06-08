@@ -88,18 +88,27 @@ class CausalSelfAttention(nn.Module):
     q = Wq.view(B, T, self.n_head, head_dim).transpose(1, 2)
     v = Wv.view(B, T, self.n_head, head_dim).transpose(1, 2)
 
-    # NEXT --> CALC ATTENTION SCORES
-    attn_scores = (q @ k.transpose(-2, -1)) / (math.sqrt(k.size(-1))) # (B, n_head, T, head_dim) @ (B, n_head, head_dim, T) --> (B, n_head, T, T)
+    # ----- WITHOUT FLASH-ATTENTION ----- #
+
+    # CALC ATTENTION SCORES
+    # (B, n_head, T, head_dim) @ (B, n_head, head_dim, T) --> (B, n_head, T, T)
     # (T, head_dim) x (head_dim, T) = (T x T)
     # k.size() ==> (B, n_head, T, head_dim)
     # k.size(-1) => head_dim = n_embd // n_head => d_k
     # THEN, apply the mask that we created and have stored as 'bias'
-    attn_scores = attn_scores.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf')) # (B, n_head, T, T)
-    attn_scores = F.softmax(attn_scores, dim=-1)
-    # we want to make our token context aware: context is now stored in the attn_scores that tell us how much to attend to other tokens
+    # attn_scores = (q @ k.transpose(-2, -1)) / (math.sqrt(k.size(-1))) 
+    # attn_scores = attn_scores.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf')) # (B, n_head, T, T)
+    # attn_scores = F.softmax(attn_scores, dim=-1)
+    # # we want to make our token context aware: context is now stored in the attn_scores that tell us how much to attend to other tokens
 
-    # NEXT --> gather all and exchange information
-    y = self.attn_dropout(attn_scores @ v) # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : ?? why do we do this?
+    # # NEXT --> gather all and exchange information
+    # y = self.attn_dropout(attn_scores @ v) # (B, n_head, T, T) @ (B, n_head, T, head_dim) --> (B, n_head, T, head_dim) : ?? why do we do this?
+    # ----- WITHOUT FLASH-ATTENTION ----- #
+
+    # ----- WITH FLASH-ATTENTION ----- #
+    y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+    # ----- WITH FLASH-ATTENTION ----- #
+
     # now we want to regather all the heads
     # .contiguous helps us concatenate all attention heads together
     y = y.transpose(1, 2) # (B, n_head, T, head_dim) --> (B, T, n_head, head_dim) : so we can combine
