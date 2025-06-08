@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn # neural network specific functions
 from torch.nn import functional as F # other functions like conv or relu, etc.
 import math
+import inspect
 from transformers.activations import NewGELUActivation
 
 # ----- DATA LOADER FOR TRAINING ----- #
@@ -309,6 +310,32 @@ class GPT(nn.Module):
 
         return model
 
+  def configure_optimizers(self, weight_decay, learning_rate, betas, device):
+    # start with all of the candidate parameters
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        # filter out those that do not require grad
+        param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
+        # create optim groups. Any parameters that is 2D will be weight decayed, otherwise no.
+        # i.e. all weight tensors in matmuls + embeddings decay, all biases and layernorms don't.
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0}
+        ]
+        num_decay_params = sum(p.numel() for p in decay_params)
+        num_nodecay_params = sum(p.numel() for p in nodecay_params)
+        print(f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+        print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
+        # Create AdamW optimizer and use the fused version if it is available
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and 'cuda' in device
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        print(f"using fused AdamW: {use_fused}")
+
+        return optimizer
+
 
 # ----- MAIN ----- #
 
@@ -351,7 +378,9 @@ def get_lr(step):
 
 losses = []
 all_tokens_per_sec = []
-optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95), eps=1e-8)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=6e-4, betas=(0.9, 0.95), eps=1e-8)
+#optim #8 weight decay
+optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, betas=(0.9, 0.95), device=device)
 for step in range(max_steps):
   # let's time
   t0 = time.time()
@@ -374,4 +403,4 @@ for step in range(max_steps):
   losses.append(loss.item())
   tokens_per_sec = (train_loader.B * train_loader.T) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
   all_tokens_per_sec.append(tokens_per_sec)
-  print(f"step {i+1}: loss = {loss.item():.6f} | lr = {lr:.4f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
+  print(f"step {i+1}: loss = {loss.item():.6f} | lr = {lr:.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
