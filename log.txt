@@ -3,6 +3,83 @@ Trying to keep track of all the runtimes with different configurations and optim
 This log/notes section is in the opposite chronological order for my convenience. So, the most recent logs appear frist. 
 All of these were run on 1 A100 available in Colab Notebook
 
+# ----- OPTIMIZATION #10 ----- #
+Distributed Data Parallelism
+B = 8 ; T = 1024 ; dtype = bfloat16
+-----------------------------
+
+-----------------------------
+
+--------------------------------------------------------------------------------
+
+# ----- OPTIMIZATION #9 ----- #
+Gradient Accumulation
+B = 8 ; T = 1024 ; dtype = bfloat16
+-----------------------------
+the intuitioin here is that we want to simulate a bigger batch size for a training model by accumulating all the calculated gradients. 
+it does so by accumulating the gradients over multiple smaller batches before updating the model's weights which is useful for memory constraints
+we essentially end up squeezing more value out of the limited data we have. 
+--> we keep going forward back on the same batch multiple times
+-----------------------------
+cuda
+total batch size: 524288 | calculated gradient accumulation steps: 64
+loaded 338025 tokens
+1 Epoch = 41 batches
+num decayed parameter tensors: 50, with 124,354,560 parameters
+num non-decayed parameter tensors: 98, with 121,344 parameters
+using fused AdamW: True
+step 50: loss = 10.953216 | lr = 0.000060 | norm = 14.7833 | time = 3068.8724517822266 | throughput = 170.84059642020097
+step 50: loss = 9.593967 | lr = 0.000120 | norm = 8.6638 | time = 3038.6834144592285 | throughput = 172.53788186858668
+step 50: loss = 9.405597 | lr = 0.000180 | norm = 8.7497 | time = 3039.8261547088623 | throughput = 172.473020928466
+step 50: loss = 9.616156 | lr = 0.000240 | norm = 7.0839 | time = 3046.018123626709 | throughput = 172.12241645357057
+step 50: loss = 9.365382 | lr = 0.000300 | norm = 5.8110 | time = 3039.0419960021973 | throughput = 172.5175238412931
+step 50: loss = 9.019501 | lr = 0.000360 | norm = 4.2640 | time = 3040.0590896606445 | throughput = 172.45980572651473
+step 50: loss = 8.814207 | lr = 0.000420 | norm = 4.1328 | time = 3037.998914718628 | throughput = 172.57675684474637
+step 50: loss = 8.663255 | lr = 0.000480 | norm = 3.4249 | time = 3045.457601547241 | throughput = 172.15409590126492
+step 50: loss = 8.505861 | lr = 0.000540 | norm = 3.4141 | time = 3036.846399307251 | throughput = 172.64225155397972
+step 50: loss = 8.326117 | lr = 0.000600 | norm = 3.4175 | time = 3037.7204418182373 | throughput = 172.59257724393683
+step 50: loss = 8.119381 | lr = 0.000600 | norm = 3.4213 | time = 3042.0782566070557 | throughput = 172.34533623890337
+step 50: loss = 7.909334 | lr = 0.000599 | norm = 3.4234 | time = 3040.619134902954 | throughput = 172.42804071767884
+step 50: loss = 7.701025 | lr = 0.000597 | norm = 2.8998 | time = 3036.194324493408 | throughput = 172.67932943899365
+step 50: loss = 7.501167 | lr = 0.000593 | norm = 2.8552 | time = 3037.2705459594727 | throughput = 172.61814252848444
+step 50: loss = 7.315161 | lr = 0.000587 | norm = 2.8590 | time = 3039.2422676086426 | throughput = 172.50615575721244
+step 50: loss = 7.148348 | lr = 0.000579 | norm = 2.6703 | time = 3040.524482727051 | throughput = 172.43340843937733
+step 50: loss = 7.003838 | lr = 0.000571 | norm = 2.4679 | time = 3038.808584213257 | throughput = 172.53077496348374
+step 50: loss = 6.882775 | lr = 0.000560 | norm = 2.4708 | time = 3038.815498352051 | throughput = 172.53038240864618
+step 50: loss = 6.784496 | lr = 0.000548 | norm = 2.4742 | time = 3039.384126663208 | throughput = 172.4981042707459
+step 50: loss = 6.706912 | lr = 0.000535 | norm = 2.4733 | time = 3036.2322330474854 | throughput = 172.67717346962252
+step 50: loss = 6.647214 | lr = 0.000521 | norm = 2.4740 | time = 3036.569595336914 | throughput = 172.65798906934953
+step 50: loss = 6.602309 | lr = 0.000505 | norm = 2.4778 | time = 3037.625551223755 | throughput = 172.5979687617463
+step 50: loss = 6.568998 | lr = 0.000489 | norm = 2.4642 | time = 3041.592836380005 | throughput = 172.372841535223
+step 50: loss = 6.544909 | lr = 0.000471 | norm = 2.4255 | time = 3039.8008823394775 | throughput = 172.4744548387985
+step 50: loss = 6.527705 | lr = 0.000453 | norm = 2.3786 | time = 3035.585641860962 | throughput = 172.71395435860143
+step 50: loss = 6.515682 | lr = 0.000433 | norm = 2.3413 | time = 3039.2866134643555 | throughput = 172.5036387411933
+step 50: loss = 6.507683 | lr = 0.000413 | norm = 2.3200 | time = 3041.6598320007324 | throughput = 172.36904484981008
+step 50: loss = 6.502273 | lr = 0.000393 | norm = 2.3482 | time = 3036.193370819092 | throughput = 172.67938367791103
+step 50: loss = 6.499169 | lr = 0.000372 | norm = 2.4924 | time = 3037.0664596557617 | throughput = 172.62974220834988
+step 50: loss = 6.497166 | lr = 0.000351 | norm = 2.6609 | time = 3040.480613708496 | throughput = 172.43589636327994
+step 50: loss = 6.495979 | lr = 0.000330 | norm = 2.7496 | time = 3038.684368133545 | throughput = 172.53782771852482
+step 50: loss = 6.495369 | lr = 0.000309 | norm = 2.7881 | time = 3034.5675945281982 | throughput = 172.771897039095
+step 50: loss = 6.494862 | lr = 0.000288 | norm = 2.8122 | time = 3037.517786026001 | throughput = 172.60409220053606
+step 50: loss = 6.494492 | lr = 0.000267 | norm = 2.8295 | time = 3042.2346591949463 | throughput = 172.3364758912911
+step 50: loss = 6.494244 | lr = 0.000247 | norm = 2.8436 | time = 3042.4046516418457 | throughput = 172.32684669906283
+step 50: loss = 6.494119 | lr = 0.000227 | norm = 2.8561 | time = 3043.571949005127 | throughput = 172.26075439792956
+step 50: loss = 6.493855 | lr = 0.000207 | norm = 2.8660 | time = 3050.255537033081 | throughput = 171.88330408211104
+step 50: loss = 6.493559 | lr = 0.000189 | norm = 2.8750 | time = 3054.3832778930664 | throughput = 171.65101832329873
+step 50: loss = 6.493418 | lr = 0.000171 | norm = 2.8811 | time = 3047.567844390869 | throughput = 172.03489036838548
+step 50: loss = 6.493149 | lr = 0.000155 | norm = 2.8866 | time = 3042.876958847046 | throughput = 172.3000985878358
+step 50: loss = 6.492932 | lr = 0.000139 | norm = 2.8907 | time = 3039.820671081543 | throughput = 172.47333205792785
+step 50: loss = 6.492755 | lr = 0.000125 | norm = 2.8941 | time = 3046.2818145751953 | throughput = 172.1075172662947
+step 50: loss = 6.492515 | lr = 0.000112 | norm = 2.8960 | time = 3033.5450172424316 | throughput = 172.8301366948531
+step 50: loss = 6.492238 | lr = 0.000100 | norm = 2.8985 | time = 3035.351514816284 | throughput = 172.72727637666463
+step 50: loss = 6.491988 | lr = 0.000089 | norm = 2.8995 | time = 3041.8474674224854 | throughput = 172.35841231850338
+step 50: loss = 6.491918 | lr = 0.000081 | norm = 2.9008 | time = 3043.177604675293 | throughput = 172.28307647720794
+step 50: loss = 6.491720 | lr = 0.000073 | norm = 2.9020 | time = 3033.721923828125 | throughput = 172.8200583850557
+step 50: loss = 6.491367 | lr = 0.000067 | norm = 2.9021 | time = 3035.400152206421 | throughput = 172.7245087007382
+step 50: loss = 6.491184 | lr = 0.000063 | norm = 2.9018 | time = 3041.6548252105713 | throughput = 172.36932858208326
+step 50: loss = 6.491073 | lr = 0.000061 | norm = 2.9022 | time = 3040.2538776397705 | throughput = 172.4487562884119
+--------------------------------------------------------------------------------
+
 # ----- OPTIMIZATION #8 ----- #
 implementing a weight decay - a regularization technique primarily used to prevent overfitting by penalizing large weights in a model
 B = 8 ; T = 1024 ; dtype = bfloat16

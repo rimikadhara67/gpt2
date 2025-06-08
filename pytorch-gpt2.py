@@ -346,7 +346,18 @@ if torch.cuda.is_available():
   device = "cuda"
 print(device)
 
-train_loader = DataLoaderLite(B=8, T=1024)
+torch.manual_seed(1337)
+if torch.cuda.is_available():
+  torch.cuda.manual_seed(1337)
+
+total_batch_size = 524288 # about 0.5M number of tokens
+B = 8 # micro_batch
+T = 1024 # seq_length
+assert total_batch_size % (B*T) == 0
+grad_accum_steps = total_batch_size // (B*T)
+print(f"total batch size: {total_batch_size} | calculated gradient accumulation steps: {grad_accum_steps}")
+
+train_loader = DataLoaderLite(B=B, T=T)
 # optim #1
 torch.set_float32_matmul_precision('high') 
 # high is for tf32 output for float32 matmuls
@@ -384,13 +395,19 @@ optimizer = model.configure_optimizers(weight_decay=0.1, learning_rate=6e-4, bet
 for step in range(max_steps):
   # let's time
   t0 = time.time()
-  x, y = train_loader.next_batch()
-  x, y = x.to(device), y.to(device)
   optimizer.zero_grad() # zero out all the gradients first so we go into each step without accumulating loss
-  # optim #2 -- torch.autocast : weights are in float32 and activations are in bfloat16 -- only select layers are changed
-  with torch.autocast(device_type=device, dtype=torch.float16):
-    logits, loss = model(x, y) 
-  loss.backward() # backprop
+  
+  # grad accum step
+  loss_accum = 0.0
+  for _ in range(grad_accum_steps):
+    x, y = train_loader.next_batch()
+    x, y = x.to(device), y.to(device)
+    # optim #2 -- torch.autocast : weights are in float32 and activations are in bfloat16 -- only select layers are changed
+    with torch.autocast(device_type=device, dtype=torch.float16):
+      logits, loss = model(x, y) 
+    loss = loss / grad_accum_steps # normalize the loss 
+    loss_accum += loss.detach()
+    loss.backward() # backprop
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) #optim #6
   # optim 7 
   lr = get_lr(step)
@@ -401,6 +418,6 @@ for step in range(max_steps):
   t1 = time.time()
   t = (t1-t0) * 1000 # miliseconds
   losses.append(loss.item())
-  tokens_per_sec = (train_loader.B * train_loader.T) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
+  tokens_per_sec = (train_loader.B * train_loader.T * grad_accum_steps) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
   all_tokens_per_sec.append(tokens_per_sec)
-  print(f"step {i+1}: loss = {loss.item():.6f} | lr = {lr:.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
+  print(f"step {i+1}: loss = {loss_accum.item():.6f} | lr = {lr:.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
