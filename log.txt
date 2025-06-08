@@ -3,6 +3,73 @@ Trying to keep track of all the runtimes with different configurations and optim
 This log/notes section is in the opposite chronological order for my convenience. So, the most recent logs appear frist. 
 All of these were run on 1 A100 available in Colab Notebook
 
+# ----- OPTIMIZATION #3 ----- 
+Using torch.compile : gcc of neural networks
+B = 8 ; T = 1024 ; dtype = tensorfloat32
+--> makes compilation a bit slow but the computations are a lot faster
+    it aims to reduce pytorch overhead and reduce gpu reads and writes
+--> insane speedup and throughput
+--> analyze the entire thing to get a sense before hand of what you want to do 
+    it has a bird's eye view of your entire code and knows exactly what computations you're going to need and when
+    it optimizes that process to run in efficient code -- i think this is like jit
+--> now that it knows which computations are when -- it makes the element-wise computations while the data is written on the gpu 
+    this is also called kernel fusion -- it fuses a bunch of operations together to happen during one roundtrip that the data is making
+-----------------------------
+cuda
+loaded 338025 tokens
+1 Epoch = 41 batches
+step 1: loss = 10.977867126464844 | time = 89.90073204040527 | throughput = 91.12272852592747
+step 2: loss = 9.502176284790039 | time = 81.44664764404297 | throughput = 100.5811808952847
+step 3: loss = 9.041337966918945 | time = 77.70490646362305 | throughput = 105.42448827005566
+step 4: loss = 8.3361177444458 | time = 78.31120491027832 | throughput = 104.60827424869315
+step 5: loss = 7.98040246963501 | time = 78.35197448730469 | throughput = 104.55384249860026
+step 6: loss = 7.541772365570068 | time = 78.32121849060059 | throughput = 104.59489979695772
+step 7: loss = 7.143893241882324 | time = 78.3078670501709 | throughput = 104.6127331593834
+step 8: loss = 6.843379020690918 | time = 78.3846378326416 | throughput = 104.51027428985093
+step 9: loss = 6.602263450622559 | time = 77.73804664611816 | throughput = 105.37954519608535
+step 10: loss = 6.396775245666504 | time = 77.81124114990234 | throughput = 105.28041808532804
+step 11: loss = 6.22437047958374 | time = 78.32670211791992 | throughput = 104.58757714153522
+step 12: loss = 6.0895466804504395 | time = 77.86059379577637 | throughput = 105.21368513431995
+step 13: loss = 5.995548248291016 | time = 77.87966728210449 | throughput = 105.18791728174719
+step 14: loss = 5.940192699432373 | time = 78.61208915710449 | throughput = 104.20789076891815
+step 15: loss = 5.912414073944092 | time = 78.36794853210449 | throughput = 104.53253088083626
+step 16: loss = 5.8999223709106445 | time = 78.43232154846191 | throughput = 104.44673622134609
+step 17: loss = 5.894169807434082 | time = 78.6292552947998 | throughput = 104.18514036901712
+step 18: loss = 5.888120174407959 | time = 78.48906517028809 | throughput = 104.37122651705462
+step 19: loss = 5.880875587463379 | time = 77.80218124389648 | throughput = 105.29267777621152
+step 20: loss = 5.873743057250977 | time = 78.02414894104004 | throughput = 104.99313496120786
+step 21: loss = 5.866426944732666 | time = 77.64911651611328 | throughput = 105.50023448496088
+step 22: loss = 5.864376068115234 | time = 77.62742042541504 | throughput = 105.52972074952471
+step 23: loss = 5.8614501953125 | time = 77.81791687011719 | throughput = 105.27138645555038
+step 24: loss = 5.860881805419922 | time = 78.43184471130371 | throughput = 104.44737121960561
+step 25: loss = 5.860180854797363 | time = 78.35102081298828 | throughput = 104.5551151088769
+step 26: loss = 5.864166259765625 | time = 78.54008674621582 | throughput = 104.30342439613746
+step 27: loss = 5.871365070343018 | time = 78.34291458129883 | throughput = 104.56593354717371
+step 28: loss = 5.866133689880371 | time = 78.30119132995605 | throughput = 104.62165212122319
+step 29: loss = 5.857914924621582 | time = 77.9731273651123 | throughput = 105.06183703060454
+step 30: loss = 5.849363327026367 | time = 77.82793045043945 | throughput = 105.25784191597688
+step 31: loss = 5.843747138977051 | time = 77.81195640563965 | throughput = 105.27945033658428
+step 32: loss = 5.839478492736816 | time = 77.88896560668945 | throughput = 105.17536002938566
+step 33: loss = 5.836612701416016 | time = 77.88300514221191 | throughput = 105.183409205149
+step 34: loss = 5.8363800048828125 | time = 78.05132865905762 | throughput = 104.95657333117472
+step 35: loss = 5.837681293487549 | time = 78.42278480529785 | throughput = 104.45943765371858
+step 36: loss = 5.840752601623535 | time = 78.3388614654541 | throughput = 104.57134360591277
+step 37: loss = 5.84300422668457 | time = 78.27925682067871 | throughput = 104.650967992276
+step 38: loss = 5.84693717956543 | time = 78.31835746765137 | throughput = 104.59872071989795
+step 39: loss = 5.847560882568359 | time = 78.03678512573242 | throughput = 104.9761338425346
+step 40: loss = 5.847979545593262 | time = 77.7578353881836 | throughput = 105.35272695161586
+step 41: loss = 5.849864959716797 | time = 78.03702354431152 | throughput = 104.97581311963239
+step 42: loss = 5.847596168518066 | time = 78.15337181091309 | throughput = 104.81953382408122
+step 43: loss = 5.847255706787109 | time = 78.34672927856445 | throughput = 104.56084223851983
+step 44: loss = 5.846600532531738 | time = 78.54509353637695 | throughput = 104.29677566309093
+step 45: loss = 5.8443708419799805 | time = 78.3090591430664 | throughput = 104.6111406476441
+step 46: loss = 5.844832420349121 | time = 78.56106758117676 | throughput = 104.27556870373799
+step 47: loss = 5.84435510635376 | time = 78.60231399536133 | throughput = 104.22085029816611
+step 48: loss = 5.845335960388184 | time = 78.31931114196777 | throughput = 104.59744704790027
+step 49: loss = 5.8457417488098145 | time = 78.2926082611084 | throughput = 104.63312159277429
+step 50: loss = 5.846532821655273 | time = 78.45473289489746 | throughput = 104.41690001002847
+--------------------------------------------------------------------------------
+
 # ----- OPTIMIZATION #2 ----- 
 Precision change to BF16 to save memory -- using torch.autocast
 B = 8 ; T = 1024 ; dtype = tensorfloat32

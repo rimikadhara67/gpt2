@@ -5,7 +5,7 @@ from torch.nn import functional as F # other functions like conv or relu, etc.
 import math
 from transformers.activations import NewGELUActivation
 
-# ---- DATA LOADER FOR TRAINING ---- #
+# ----- DATA LOADER FOR TRAINING ----- #
 
 import tiktoken
 class DataLoaderLite:
@@ -17,24 +17,6 @@ class DataLoaderLite:
     # this is the tiny-shakespeare dataset that can be extracted as a raw "input.txt" file with this command
     # !wget https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
     with open('input.txt', 'r') as f: 
-      text = f.read()
-    tokens = self.enc.encode(text)
-    self.tokens = torch.tensor(tokens)
-    print(f"loaded {len(self.tokens)} tokens")
-    print(f"1 Epoch = {len(self.tokens) // (self.B * self.T)} batches")
-
-    self.current_position = 0
-
-# ---- DATA LOADER FOR TRAINING ---- #
-
-import tiktoken
-class DataLoaderLite:
-  def __init__(self, B, T):
-    self.B = B
-    self.T = T
-    self.enc = tiktoken.get_encoding("gpt2")
-
-    with open('input.txt', 'r') as f:
       text = f.read()
     tokens = self.enc.encode(text)
     self.tokens = torch.tensor(tokens)
@@ -317,3 +299,47 @@ class GPT(nn.Module):
 
 
         return model
+
+
+# ----- MAIN ----- #
+# -------TRAINING CODE------- #
+
+import time
+
+device = "cpu"
+if torch.cuda.is_available():
+  device = "cuda"
+print(device)
+
+train_loader = DataLoaderLite(B=8, T=1024)
+# optim #1
+torch.set_float32_matmul_precision('high') 
+# high is for tf32 output for float32 matmuls
+# also tried 'medium' which is for bf16 -- but we don't use medium we use torch.autocast!!
+# we now expect all the matmuls (in Linear layers especially) to run tf32 -- expecting around 8x speedup
+
+model = GPT(GPTConfig())
+model.to(device)
+model = torch.compile(model) # optim #3 -- torch.compile
+
+losses = []
+all_tokens_per_sec = []
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+for i in range(50):
+  # let's time
+  t0 = time.time()
+  x, y = train_loader.next_batch()
+  x, y = x.to(device), y.to(device)
+  optimizer.zero_grad() # zero out all the gradients first so we go into each step without accumulating loss
+  # optim #2 -- torch.autocast : weights are in float32 and activations are in bfloat16 -- only select layers are changed
+  with torch.autocast(device_type=device, dtype=torch.float16):
+    logits, loss = model(x, y) 
+  loss.backward() # backprop
+  optimizer.step() # update the params based on the backprop
+  torch.cuda.synchronize() # needs to make sure all the threads have completed on the gpu -- makes the cpu wait
+  t1 = time.time()
+  t = (t1-t0) * 1000 # miliseconds
+  losses.append(loss.item())
+  tokens_per_sec = (train_loader.B * train_loader.T) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
+  all_tokens_per_sec.append(tokens_per_sec)
+  print(f"step {i+1}: loss = {loss.item()} | time = {t} | throughput = {tokens_per_sec}")
