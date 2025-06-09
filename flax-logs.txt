@@ -1,0 +1,14 @@
+ I want to note down some of the key differences between flax and pytorch here as well as store all the outputs I have gotten while trying to optimize training. 
+---------------------------------------------------------------------------------------
+            |             PyTorch               |               Flax                  |
+---------------------------------------------------------------------------------------
+Optim #1    |            fl32 -> TF32           |             use jmp                 |
+Optim #2    |            TF32 -> BF16           |             use jmp                 |
+Optim #3    |           torch.compile           |             jax.jit                 |
+Optim #4    |   scaled_dot_product_attention()  |   jax.nn.dot_product_attention()    |
+Optim #5    |   
+Optim #6    |
+Optim #7    |
+Optim #8    |
+Optim #9    |
+Optim #10   |
