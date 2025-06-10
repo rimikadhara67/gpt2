@@ -13,7 +13,7 @@ B = 8 ; T = 1024 ; dtype = bfloat16
 --------------------------------------------------------------------------------
 
 # ----- OPTIMIZATION #9 ----- #
-Gradient Accumulation
+Gradient Accumulation -- the point here is not a performance speedup, but making the architecture train on more
 B = 8 ; T = 1024 ; dtype = bfloat16
 -----------------------------
 the intuitioin here is that we want to simulate a bigger batch size for a training model by accumulating all the calculated gradients. 

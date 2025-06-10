@@ -34,13 +34,7 @@ class DataLoaderLite:
 
     self.current_position = B*T + 1
     # check out of bounds -- reset
-    if self.current_position >= len(self.tokens):
-      self.current_position = 0
-    return x, y
-
-    self.current_position = B*T + 1
-    # check out of bounds -- reset
-    if self.current_position >= len(self.tokens):
+    if self.current_position + (B * T + 1) >= len(self.tokens):
       self.current_position = 0
     return x, y
 
