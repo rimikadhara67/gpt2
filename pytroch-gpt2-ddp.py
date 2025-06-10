@@ -1,5 +1,3 @@
-%%writefile train_gpt2.py
-
 from dataclasses import dataclass
 import torch
 import torch.nn as nn # neural network specific functions
@@ -39,10 +37,10 @@ class DataLoaderLite:
     x = buf[:-1].view(B, T)
     y = buf[1:].view(B, T)
 
-    self.current_position = B * T + self.num_processes
+    self.current_position += B * T * self.num_processes
     # check out of bounds -- reset
-    if self.current_position + (B * T + 1) >= len(self.tokens):
-      self.current_position = 0
+    if self.current_position + (B * T * self.num_processes + 1) >= len(self.tokens):
+      self.current_position = self.B * self.T * self.process_rank
     return x, y
 
 # ----- GPT-2 IMPLEMENTATION ----- #
@@ -342,6 +340,8 @@ class GPT(nn.Module):
 import time
 import os
 from torch.distributed import init_process_group, destroy_process_group
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.distributed as dist
 
 # setting up for DDP
 ddp = int(os.environ.get('RANK', -1)) != -1 # checks if this is a ddp run? --> bad way
@@ -380,7 +380,6 @@ if master_process:
 # let's check them
 print("I am GPU ", ddp_rank)
 print("Bye")
-import sys; sys.exit(0)
 
 train_loader = DataLoaderLite(B=B, T=T, process_rank=ddp_rank, num_processes=ddp_world_size) # pass in gpu details to our data loader
 # optim #1
@@ -392,6 +391,8 @@ torch.set_float32_matmul_precision('high')
 model = GPT(GPTConfig(vocab_size=50304))
 model.to(device)
 model = torch.compile(model) # optim #3 -- torch.compile
+if ddp:
+  model = DDP(model, device_ids=[ddp_local_rank]) # ddp calls an ALlReduce and then communicates the average fo the gradietns  -- there's an overlap of communication and calculation of backprop
 
 max_lr = 6e-4
 min_lr = max_lr * 0.1
@@ -424,7 +425,7 @@ for step in range(max_steps):
 
   # grad accum step
   loss_accum = 0.0
-  for _ in range(grad_accum_steps):
+  for micro_step in range(grad_accum_steps):
     x, y = train_loader.next_batch()
     x, y = x.to(device), y.to(device)
     # optim #2 -- torch.autocast : weights are in float32 and activations are in bfloat16 -- only select layers are changed
@@ -432,7 +433,13 @@ for step in range(max_steps):
       logits, loss = model(x, y)
     loss = loss / grad_accum_steps # normalize the loss
     loss_accum += loss.detach()
-    loss.backward() # backprop
+    if ddp:
+      model.require_backward_grad_sync = (micro_step == grad_accum_steps - 1) # prevents from synchronizing after each microstep
+    loss.backward() # backprop -- we don't want to synchronize at every micro-
+    
+  if ddp: 
+    dist.all_reduce(loss_accum, op=dist.ReduceOp.AVG)
+  
   norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) #optim #6
   # optim 7
   lr = get_lr(step)
@@ -443,6 +450,14 @@ for step in range(max_steps):
   t1 = time.time()
   t = (t1-t0) * 1000 # miliseconds
   losses.append(loss.item())
-  tokens_per_sec = (train_loader.B * train_loader.T * grad_accum_steps) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
+  tokens_per_sec = (train_loader.B * train_loader.T * grad_accum_steps * ddp_world_size) / t # a more objective metric which is throughput -- how many tokens are we getting through per second
   all_tokens_per_sec.append(tokens_per_sec)
-  print(f"step {i+1}: loss = {loss_accum.item():.6f} | lr = {lr:.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
+
+  if master_process:
+    print(f"step {i+1}: loss = {loss_accum.item():.6f} | lr = {lr:.6f} | norm = {norm:.4f} | time = {t} | throughput = {tokens_per_sec}")
+
+
+  if ddp:
+    destroy_process_group()
+
+import sys; sys.exit(0)
