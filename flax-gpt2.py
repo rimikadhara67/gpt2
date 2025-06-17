@@ -1,4 +1,3 @@
-
 # TODO: look into rngs
 # TODO: figure out Transformer module and how to make a list of Blocks
 # TODO: also check why HF implementation uses nn.Module --> it's because they import linen as nn; they are using linen instead of nnx
@@ -32,7 +31,7 @@ class CausalSelfAttention(nnx.Module):
       q, k, v = jnp.split(W_qkv, 3, axis=-1) # NOTE: using jnp to manipulate matrices instead of torch.split
       # jnp.split(ary, indices_or_sections, axis=0) v/s ary.split(tensor, split_size_or_sections, dim=0)
 
-      head_dim = self.n_embd // self.n_layer
+      head_dim = self.n_embd // config.n_layer
       # Goal: to split the attention heads worth of information
       # using reshape to get the appropriate dimensions
       # transpose input params different
@@ -42,9 +41,9 @@ class CausalSelfAttention(nnx.Module):
       # --> qkv matrices: (B,T,C) -> (B,T, n_head, head_dim) -> (B, n_head, T, head_dim)
 
       # Calculating attention scores
-      attn_scores = (q @ k.transpose((0, 1, 3, 2))) / math.sqrt(k.size(-1))
+      attn_scores = (q @ k.transpose((0, 1, 3, 2))) / math.sqrt(k.shape[-1])
       attn_scores = jnp.where((self.bias.value[:, :, :T, :T]) == 0, -jnp.inf, attn_scores)       # wherever there is a mask, set it to -inf
-      attn_scores = nnx.softmax(attn_scores, dim=-1)
+      attn_scores = nnx.softmax(attn_scores, axis=-1)
       y = attn_scores @ v
       y = y.transpose(0, 2, 1, 3) # apparently don't need .contiguous here because jax arrays are always contiguous
       y = y.reshape(B, T, C)
@@ -80,6 +79,7 @@ class Block(nnx.Module):
 class Transformer(nnx.Module):
     def __init__(self, config, *, rngs:nnx.Rngs):
       super().__init__()
+      self.config = config
       self.wte = nnx.Embed(config.vocab_size, config.n_embd, rngs=rngs)   # flax requires a separate way to handle random initialized weights
       self.wpe = nnx.Embed(config.block_size, config.n_embd, rngs=rngs)
       self.h: List[Block] = [
@@ -148,5 +148,5 @@ class FlaxGPT(nnx.Module):
       hf_model = FlaxGPT2LMHeadModel.from_pretrained(model_type, dtype=jnp.float32)
       hf_params = hf_model.params
 
-
+      return model
       return model, hf_params  # Return the **model architecture** and the **pretrained params**
