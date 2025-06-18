@@ -113,7 +113,7 @@ class FlaxGPT(nnx.Module):
       self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, use_bias=False, rngs=rngs)
 
       # weight-tying -- ? doin't know why this is important
-      self.lm_head.kernel.value = self.transformer.wte.embedding.value
+      self.lm_head.kernel.value = self.transformer.wte.embedding.value.T
 
     def __call__(self, idx):
       hidden = self.transformer(idx) # TODO: understand the semantic meaning behind what it being passed on here -- what is idx? is it the tokenized input?
@@ -180,7 +180,7 @@ class FlaxGPT(nnx.Module):
 
       # Weight tying after loading
       try:
-          model.lm_head.kernel.value = model.transformer.wte.embedding.value
+          model.lm_head.kernel.value = model.transformer.wte.embedding.value.T
           print("Applied weight tying successfully.")
       except Exception as e:
           print(f"Error applying weight tying: {e}")
@@ -188,14 +188,13 @@ class FlaxGPT(nnx.Module):
       return model
 
 
-# inference code not working
 # ----- INFERENCE CODE ----- #
 
-num_return_seq = 1
+num_return_seq = 5
 max_length = 30
 
 # our model
-model, hf_params = FlaxGPT.from_pretrained("gpt2")
+model = FlaxGPT.from_pretrained("gpt2")
 # model            = nnx.inject_state(model, hf_params) # what does this do?
 # HF model
 from transformers import FlaxGPT2LMHeadModel
@@ -216,7 +215,7 @@ x = jax.device_put(x)
 key = jax.random.PRNGKey(42)
 
 while x.shape[1] < max_length:
-  logits, _ = model(x) # for our model
+  logits = model(x) # for our model
   # for their model
   # logits = model(input_ids=x, deterministic=True).logits
   logits = logits[:, -1, :]
@@ -228,7 +227,6 @@ while x.shape[1] < max_length:
   idx_topk = idx_topk[..., None]
 
   idx_next = jnp.take_along_axis(topk_indices, idx_topk, axis=-1)
-  idx_next = jnp.squeeze(idx_next, axis=-1)
   x = jnp.concatenate([x, idx_next], axis=-1)
 
 
