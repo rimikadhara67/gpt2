@@ -31,7 +31,7 @@ class CausalSelfAttention(nnx.Module):
       q, k, v = jnp.split(W_qkv, 3, axis=-1) # NOTE: using jnp to manipulate matrices instead of torch.split
       # jnp.split(ary, indices_or_sections, axis=0) v/s ary.split(tensor, split_size_or_sections, dim=0)
 
-      head_dim = self.n_embd // config.n_layer
+      head_dim = self.n_embd // config.n_head
       # Goal: to split the attention heads worth of information
       # using reshape to get the appropriate dimensions
       # transpose input params different
@@ -112,6 +112,9 @@ class FlaxGPT(nnx.Module):
       self.transformer = Transformer(config, rngs=rngs) # flax nnx does not have nnx.ModuleDict equivalent --> making it into a class in order oto adhere to HF GPT2 implementation
       self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, use_bias=False, rngs=rngs)
 
+      # weight-tying -- ? doin't know why this is important
+      self.lm_head.kernel.value = self.transformer.wte.embedding.transpose((1, 0)).value
+
     def __call__(self, idx):
       hidden = self.transformer(idx) # TODO: understand the semantic meaning behind what it being passed on here -- what is idx? is it the tokenized input?
       return self.lm_head(hidden)
@@ -148,5 +151,53 @@ class FlaxGPT(nnx.Module):
       hf_model = FlaxGPT2LMHeadModel.from_pretrained(model_type, dtype=jnp.float32)
       hf_params = hf_model.params
 
-      return model
       return model, hf_params  # Return the **model architecture** and the **pretrained params**
+
+
+# inference code not working
+# ----- INFERENCE CODE ----- #
+
+num_return_seq = 1
+max_length = 30
+
+# our model
+model, hf_params = FlaxGPT.from_pretrained("gpt2")
+# model            = nnx.inject_state(model, hf_params) # what does this do?
+# HF model
+from transformers import FlaxGPT2LMHeadModel
+# model = FlaxGPT2LMHeadModel.from_pretrained("gpt2")
+
+import tiktoken
+enc = tiktoken.get_encoding('gpt2') # tokenizer for gpt2
+tokens = enc.encode("Hello, I'm a language model,") # 8 tokens
+x = jnp.array(tokens, dtype=jnp.int32)[None, :].repeat(num_return_seq, axis=0).reshape(num_return_seq, -1) # [5, 8]
+# print(x)
+# print(jax.device_count())
+# # print jax device
+# print(jax.devices())
+x = jax.device_put(x)
+
+
+# random seed
+key = jax.random.PRNGKey(42)
+
+while x.shape[1] < max_length:
+  logits, _ = model(x) # for our model
+  # for their model
+  # logits = model(input_ids=x, deterministic=True).logits
+  logits = logits[:, -1, :]
+
+  probs = jax.nn.softmax(logits, axis=-1)
+  topk_probs, topk_indices = jax.lax.top_k(probs, k=50) # getting the top 50 probbailities -- everything else is set to 0 -- keeps the model on track
+  key, subkey = jax.random.split(key)
+  idx_topk = jax.random.categorical(subkey, topk_probs, axis=-1)
+  idx_topk = idx_topk[..., None]
+
+  idx_next = jnp.take_along_axis(topk_indices, idx_topk, axis=-1)
+  idx_next = jnp.squeeze(idx_next, axis=-1)
+  x = jnp.concatenate([x, idx_next], axis=-1)
+
+
+for i in range(num_return_seq):
+    decoded = enc.decode(x[i, :max_length].tolist())
+    print(f">> {decoded}")
