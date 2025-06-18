@@ -113,7 +113,7 @@ class FlaxGPT(nnx.Module):
       self.lm_head = nnx.Linear(config.n_embd, config.vocab_size, use_bias=False, rngs=rngs)
 
       # weight-tying -- ? doin't know why this is important
-      self.lm_head.kernel.value = self.transformer.wte.embedding.transpose((1, 0)).value
+      self.lm_head.kernel.value = self.transformer.wte.embedding.value
 
     def __call__(self, idx):
       hidden = self.transformer(idx) # TODO: understand the semantic meaning behind what it being passed on here -- what is idx? is it the tokenized input?
@@ -148,10 +148,53 @@ class FlaxGPT(nnx.Module):
 
       # Load pretrained Hugging Face Flax model
       print(f"Loading pretrained Hugging Face FlaxGPT2LMHeadModel for {model_type}")
-      hf_model = FlaxGPT2LMHeadModel.from_pretrained(model_type, dtype=jnp.float32)
-      hf_params = hf_model.params
+      print("Loading HF FlaxGPT2LMHeadModel weights …")
+      hf_params = (FlaxGPT2LMHeadModel.from_pretrained(model_type, dtype=jnp.float32).params)
+      
+      # Debugging: Print structure and shape of HF c_attn params
+      print("\n--- HF c_attn params structure and shape ---")
+      try:
+          hf_c_attn_params = hf_params['transformer']['h'][0]['attn']['c_attn']
+          for k, v in hf_c_attn_params.items():
+              print(f"  HF param key: {k}, shape: {v.shape}")
+      except KeyError:
+          print("Could not find HF c_attn params in hf_params.")
 
-      return model, hf_params  # Return the **model architecture** and the **pretrained params**
+      graphdef, state = nnx.split(model)               # separate structure/state
+
+      # Debugging: Print structure and shape of initial NNX c_attn state
+      print("\n--- Initial NNX c_attn state structure and shape ---")
+      try:
+          nnx_c_attn_state_init = state['transformer']['h'][0]['attn']['c_attn']
+          for k, v in nnx_c_attn_state_init.items():
+               # nnx.Variable has a .value attribute for the array
+               print(f"  Initial NNX state key: {k}, shape: {v.value.shape if hasattr(v, 'value') else v.shape}")
+      except KeyError:
+          print("Could not find initial NNX c_attn state.")
+
+
+      nnx.replace_by_pure_dict(state, hf_params)
+
+      # Debugging: Print structure and shape of NNX c_attn state after replacement
+      print("\n--- NNX c_attn state structure and shape after replace ---")
+      try:
+          nnx_c_attn_state_after_replace = state['transformer']['h'][0]['attn']['c_attn']
+          for k, v in nnx_c_attn_state_after_replace.items():
+              print(f"  NNX state after replace key: {k}, shape: {v.value.shape if hasattr(v, 'value') else v.shape}")
+      except KeyError:
+          print("Could not find NNX c_attn state after replace.")
+
+
+      model = nnx.merge(graphdef, state)               # re-assemble
+
+      # Weight tying after loading
+      try:
+          model.lm_head.kernel.value = model.transformer.wte.embedding.value
+          print("Applied weight tying successfully.")
+      except Exception as e:
+          print(f"Error applying weight tying: {e}")
+
+      return model
 
 
 # inference code not working
