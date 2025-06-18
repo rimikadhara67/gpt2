@@ -31,18 +31,18 @@ class CausalSelfAttention(nnx.Module):
       q, k, v = jnp.split(W_qkv, 3, axis=-1) # NOTE: using jnp to manipulate matrices instead of torch.split
       # jnp.split(ary, indices_or_sections, axis=0) v/s ary.split(tensor, split_size_or_sections, dim=0)
 
-      head_dim = self.n_embd // config.n_head
+      self.head_dim = self.n_embd // self.n_head
       # Goal: to split the attention heads worth of information
       # using reshape to get the appropriate dimensions
       # transpose input params different
-      q = q.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3)
-      k = k.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3)
-      v = v.reshape(B, T, self.n_head, head_dim).transpose(0, 2, 1, 3)
+      q = q.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+      k = k.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
+      v = v.reshape(B, T, self.n_head, self.head_dim).transpose(0, 2, 1, 3)
       # --> qkv matrices: (B,T,C) -> (B,T, n_head, head_dim) -> (B, n_head, T, head_dim)
 
       # Calculating attention scores
       attn_scores = (q @ k.transpose((0, 1, 3, 2))) / math.sqrt(k.shape[-1])
-      attn_scores = jnp.where((self.bias.value[:, :, :T, :T]) == 0, -jnp.inf, attn_scores)       # wherever there is a mask, set it to -inf
+      attn_scores = jnp.where((self.bias.value[:, :, :T, :T]) == 0, -1e10, attn_scores)       # wherever there is a mask, set it to -inf
       attn_scores = nnx.softmax(attn_scores, axis=-1)
       y = attn_scores @ v
       y = y.transpose(0, 2, 1, 3) # apparently don't need .contiguous here because jax arrays are always contiguous
@@ -172,9 +172,8 @@ class FlaxGPT(nnx.Module):
                 w = src[k]
                 if not isinstance(w, jnp.ndarray):
                     continue
-                if (p.endswith(transposed) and w.ndim == 2
-                    and w.shape[::-1] == dst[k].value.shape):
-                    dst[k].value = w.T
+                if any(p.endswith(w) for w in transposed) and w.ndim == 2 and w.shape[::-1] == dst[k].value.shape:
+                  dst[k].value = w.T
                 elif w.shape == dst[k].value.shape:
                     dst[k].value = w
 
