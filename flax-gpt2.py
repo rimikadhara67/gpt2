@@ -151,41 +151,32 @@ class FlaxGPT(nnx.Module):
       print("Loading HF FlaxGPT2LMHeadModel weights …")
       hf_params = (FlaxGPT2LMHeadModel.from_pretrained(model_type, dtype=jnp.float32).params)
       
-      # Debugging: Print structure and shape of HF c_attn params
-      print("\n--- HF c_attn params structure and shape ---")
-      try:
-          hf_c_attn_params = hf_params['transformer']['h'][0]['attn']['c_attn']
-          for k, v in hf_c_attn_params.items():
-              print(f"  HF param key: {k}, shape: {v.shape}")
-      except KeyError:
-          print("Could not find HF c_attn params in hf_params.")
+      graphdef, state = nnx.split(model) # get the blueprint(layers, order, shapes) and the state
+      transposed = ("attn.c_attn.kernel", "attn.c_proj.kernel", "mlp.c_fc.kernel", "mlp.c_proj.kernel") # we need to find these layers and transpose them becuase HF stores them output_dim x input_dim --> they are probably convolution layers
 
-      graphdef, state = nnx.split(model)               # separate structure/state
+      def _copy(dst, src, path=""):
+        for k in dst:
+            if k not in src:
+                continue                      # skip keys HF doesn't have
+            p = f"{path}.{k}" if path else k
 
-      # Debugging: Print structure and shape of initial NNX c_attn state
-      print("\n--- Initial NNX c_attn state structure and shape ---")
-      try:
-          nnx_c_attn_state_init = state['transformer']['h'][0]['attn']['c_attn']
-          for k, v in nnx_c_attn_state_init.items():
-               # nnx.Variable has a .value attribute for the array
-               print(f"  Initial NNX state key: {k}, shape: {v.value.shape if hasattr(v, 'value') else v.shape}")
-      except KeyError:
-          print("Could not find initial NNX c_attn state.")
+            if isinstance(dst[k], dict):      # recurse into sub-dict
+                _copy(dst[k], src[k], p)
+            else:                             # dst[k] is VariableState
+                w = src[k]
+                # --- ignore non-array (dict) mismatches like ln_*.weight ---
+                if not isinstance(w, jnp.ndarray):
+                    continue
 
+                if (p.endswith(transposed) and w.ndim == 2 and
+                    w.shape[::-1] == dst[k].value.shape):
+                    dst[k].value = w.T        # Conv1D → Linear
+                else:
+                    if w.shape == dst[k].value.shape:
+                        dst[k].value = w      # copy 1-to-1
 
-      nnx.replace_by_pure_dict(state, hf_params)
-
-      # Debugging: Print structure and shape of NNX c_attn state after replacement
-      print("\n--- NNX c_attn state structure and shape after replace ---")
-      try:
-          nnx_c_attn_state_after_replace = state['transformer']['h'][0]['attn']['c_attn']
-          for k, v in nnx_c_attn_state_after_replace.items():
-              print(f"  NNX state after replace key: {k}, shape: {v.value.shape if hasattr(v, 'value') else v.shape}")
-      except KeyError:
-          print("Could not find NNX c_attn state after replace.")
-
-
-      model = nnx.merge(graphdef, state)               # re-assemble
+      _copy(state, hf_params)
+      model = nnx.merge(graphdef, state) # put them back
 
       # Weight tying after loading
       try:
