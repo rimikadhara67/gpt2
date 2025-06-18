@@ -157,23 +157,26 @@ class FlaxGPT(nnx.Module):
       def _copy(dst, src, path=""):
         for k in dst:
             if k not in src:
-                continue                      # skip keys HF doesn't have
-            p = f"{path}.{k}" if path else k
+                # LayerNorm remap: nnx scale  ← HF weight
+                if k == "scale" and "weight" in src:
+                    w = src["weight"]
+                    if isinstance(w, jnp.ndarray) and w.shape == dst[k].value.shape:
+                        dst[k].value = w
+                    continue
+                continue
 
-            if isinstance(dst[k], dict):      # recurse into sub-dict
+            p = f"{path}.{k}" if path else k
+            if isinstance(dst[k], dict):
                 _copy(dst[k], src[k], p)
-            else:                             # dst[k] is VariableState
+            else:
                 w = src[k]
-                # --- ignore non-array (dict) mismatches like ln_*.weight ---
                 if not isinstance(w, jnp.ndarray):
                     continue
-
-                if (p.endswith(transposed) and w.ndim == 2 and
-                    w.shape[::-1] == dst[k].value.shape):
-                    dst[k].value = w.T        # Conv1D → Linear
-                else:
-                    if w.shape == dst[k].value.shape:
-                        dst[k].value = w      # copy 1-to-1
+                if (p.endswith(transposed) and w.ndim == 2
+                    and w.shape[::-1] == dst[k].value.shape):
+                    dst[k].value = w.T
+                elif w.shape == dst[k].value.shape:
+                    dst[k].value = w
 
       _copy(state, hf_params)
       model = nnx.merge(graphdef, state) # put them back
